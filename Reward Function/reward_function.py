@@ -113,10 +113,10 @@ def get_progress_score(params, error):
     progress = params['progress']
 
     # Total num of steps we want the car to finish the lap, it will vary depends on the track length
-    TOTAL_NUM_STEPS = 220
-    ERROR_THRESHOLD = 0.5
+    TOTAL_NUM_STEPS = 220 #TODO make this dynamic based on the track length
+    ERROR_THRESHOLD = 0.25
     MAX_SPEED = 3.7
-    MIN_SPEED = 1.5
+    MIN_SPEED = 2.0
     # Initialize the reward with typical value
     reward = 0
 
@@ -135,29 +135,15 @@ def get_progress_score(params, error):
             reward += (progress / 100) + (progress / 200)
 
 
-    
-    if progress == 100 and error < 0.15 and ((params["speed"] - MAX_SPEED) < 0.3 ):
-        reward = 2*(1 +(progress / 100)) + 5
-    elif progress == 100 and error < 0.25 and ((params["speed"] - MAX_SPEED) < 0.3 ):
-        reward = 2*(1 +(progress / 100)) + 4
-    elif progress == 100 and error < 0.25 and ((params["speed"] - MAX_SPEED) < 0.6 ):
-        reward = 2*(1 +(progress / 100)) + 3
-    elif progress == 100 and error < 0.25 and ((params["speed"] - MAX_SPEED) < 1.5 ):
-        reward = 2*(1 +(progress / 100)) + 2
-    elif progress == 100 and error < 0.25 and ((params["speed"] - MAX_SPEED) < 2 ):
-        reward = 2*(1 +(progress / 100))
-    
-    elif progress == 100 and error > 0.25 and error < 0.65 and  ((params["speed"] - MAX_SPEED) < 0.6 ):
-        reward = 3 +(progress / 100)
-    elif progress == 100 and error > 0.25 and error < 0.65 and  ((params["speed"] - MAX_SPEED) < 1.5 ):
-        reward = 2 +(progress / 100)
-    elif progress == 100 and error > 0.25 and error < 0.65 and  ((params["speed"] - MAX_SPEED) < 2 ):
-        reward = 1 +(progress / 100)
-    
+    if progress == 100:
+        reward -= error+(params["speed"] - MAX_SPEED)    
 
     if (steps % 100) == 0 and progress == 100 and error < 0.25 and params["speed"] == MAX_SPEED:
         reward = reward * 2 
         
+    #scaling the reward by the progress to encourage the model to prioritize progress,
+    #we can even use exponential scaling for this.    
+    reward *= (progress/100)
     return float(reward)
 
 
@@ -165,14 +151,12 @@ def score_steer_to_point_ahead(params):
     best_stearing_angle = get_target_steering_degree(params)
     steering_angle = params['steering_angle']
 
-    error = (steering_angle - best_stearing_angle) / 60.0  # 60 degree is already really bad
-
-    score = 1.0 - abs(error)
-
-    return max(score + get_progress_score(params, abs(error)), 0.01)  # optimizer is rumored to struggle with negative numbers and numbers too close to zero
-
+    error = (steering_angle - best_stearing_angle) / 30.0  # keeping 30 degrees as the threshold for error in the angle
+    error = error**2 # squaring the error to get rid of the negative as well as amplifying the error
+    score = 1.0 - error
+    return score + get_progress_score(params, error)
 
 def reward_function(params):
     if params["is_offtrack"] or params["is_crashed"]:
-        return 0.0001
+        return -1 #not sure if the reward can be negative or not, but I think negative reward makes sense
     return float(score_steer_to_point_ahead(params))
