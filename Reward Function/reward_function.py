@@ -28,8 +28,6 @@ params = {
 """
 
 import math
-import logging
-
 
 def dist(point1, point2):
     return ((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2) ** 0.5
@@ -113,33 +111,23 @@ def get_progress_score(params, error):
     progress = params['progress']
 
     # Total num of steps we want the car to finish the lap, it will vary depends on the track length
-    TOTAL_NUM_STEPS = 220 #TODO make this dynamic based on the track length
+    # TODO make this dynamic based on the track length, number of way points, overall shape of the track
+    TOTAL_NUM_STEPS = 220
     ERROR_THRESHOLD = 0.25
     MAX_SPEED = 3.7
-    MIN_SPEED = 2.0
     # Initialize the reward with typical value
     reward = 0
 
     # Give Reward for progress only if error is < the Error treshold
-    
-    # Here if ERROR_THRESHOLD/ < error < ERROR_THRESHOLD then only give  (progress / 100) as reward
-    if error < ERROR_THRESHOLD and error > ERROR_THRESHOLD/2:
-        # Give additional reward if the car pass every 100 steps faster than expected
-        if (steps % 50) == 0 and progress > (steps / TOTAL_NUM_STEPS) * 100 :
-            reward += (progress / 100)
-
-    # Here if ERROR_THRESHOLD/4 < error < ERROR_THRESHOLD/2 then only give  (progress / 100) + (progress / 200) as reward
-    elif error <= ERROR_THRESHOLD/2 and error >= ERROR_THRESHOLD/4:
-        # Give additional reward if the car pass every 100 steps faster than expected
-        if (steps % 50) == 0 and progress > (steps / TOTAL_NUM_STEPS) * 100 :
-            reward += (progress / 100) + (progress / 200)
-
+    # TODO we need a better way to implement lines 123-130
+    if progress > (steps / TOTAL_NUM_STEPS) * 100 and error < ERROR_THRESHOLD:
+        reward += ( progress/100 ) * (ERROR_THRESHOLD-error) * int( steps%100==0 )
 
     if progress == 100:
-        reward -= error+(params["speed"] - MAX_SPEED)    
+        reward -= error+abs(params["speed"] - MAX_SPEED)
 
-    if (steps % 100) == 0 and progress == 100 and error < 0.25 and params["speed"] == MAX_SPEED:
-        reward = reward * 2 
+    if (steps % 100) == 0 and progress == 100 and error < 0.0625 and params["speed"] == MAX_SPEED:
+        reward = reward * 2 if reward > 0 else reward+5
         
     #scaling the reward by the progress to encourage the model to prioritize progress,
     #we can even use exponential scaling for this.    
