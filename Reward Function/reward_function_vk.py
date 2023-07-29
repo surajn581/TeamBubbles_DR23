@@ -1,3 +1,5 @@
+import math
+
 """
 params = {
     "all_wheels_on_track": Boolean,        # flag to indicate if the agent is on the track
@@ -26,17 +28,17 @@ params = {
 
 }
 """
-
 import math
 
 def distance(p1, p2):
     """ Euclidean distance between two points """ 
-    return ((p1[0] - p2[0]) * 2 + (p1[1] - p2[1]) * 2) ** 0.5
+    return ((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2) ** 0.5
 
 def angle(p):
     """
     """
     return math.degrees(math.atan2(p[1],p[0]))
+
 
 def up_sample(waypoints, factor):
     """
@@ -62,7 +64,7 @@ def get_waypoints(params, scaling_factor):
 
     starting = (params["x"], params["y"])
 
-    waypoints = starting + waypoints
+    waypoints = list(starting) + waypoints
 
     increased_precision = up_sample(waypoints, scaling_factor)
     increased_precision.pop(0)
@@ -73,6 +75,7 @@ def target_angle(params):
     wp = get_waypoints(params, 2)
     return angle(wp[0])    
 
+
 def is_higher_speed_favorable(params):
     """ no high difference in heading  """
     wp = get_waypoints(params, 2)
@@ -81,20 +84,45 @@ def is_higher_speed_favorable(params):
     points_threshold = 10
 
     angles = [angle(p) for p in wp[0:points_threshold]] 
-
-    if all(abs(angles[i] - angles[i+1]) <= diff_threshold for i in range(len(angles) - 1)):
-        return 100 * params["speed"]
-
-    # More deviation, less favorable higher speeds
-    return max(10, 100 - sum(abs(angles[i] - angles[i+1]) for i in range(len(angles) - 1))) * params["speed"]
+    diff_angles = [ abs(angles[i] - angles[i+1]) <= diff_threshold for i in range(len(angles) - 1) ]
+    is_straight = all(diff_angles)
+    return 10 * params["speed"] * (-1 if not is_straight else 1)
      
 def is_steps_favorable(params):
     return 1 * 100 / params["steps"]
 
+def get_target_steering_degree(params):
+    tx, ty = get_waypoints(params,2)[0]
+    car_x = params['x']
+    car_y = params['y']
+    dx = tx-car_x
+    dy = ty-car_y
+    heading = params['heading']
+    target_angle = angle((dx, dy))
+    steering_angle = target_angle - heading
+    return steering_angle % 360
+
 def is_progress_favorable(params):
     return params["progress"] / 10
 
-def reward_function(params):
+def off_center_penalty( params ):
+    ''' function to encourage the model to stay close to the track center when there are no curves coming up'''
+    #TODO check how we can improve this logic
+    threshold = params['track_width']*0.1
+    factor = 1 if is_higher_speed_favorable( params ) > 0 else -1
+    return int( params[ 'distance_from_center' ] < threshold ) * 10 * factor
+
+def score_steer_to_point_ahead(params):
+    best_stearing_angle = get_target_steering_degree(params)
+    steering_angle = params['steering_angle']
+    error = (steering_angle - best_stearing_angle) / 30.0   # keeping 30 degrees as the threshold for error in the angle
+    score = 1.0 - error**2
+    return is_steps_favorable(params) * is_progress_favorable(params) + is_higher_speed_favorable(params) + score + off_center_penalty(params)
+
+def calculate_reward(params):
     if params["is_offtrack"] or params["is_crashed"]:
-        return -10
-    return float(is_progress_favorable(params) * is_higher_speed_favorable(params) * is_steps_favorable(params))
+        return -100.0
+    return float(score_steer_to_point_ahead(params))
+
+def reward_function(params):
+    return float(calculate_reward(params))
