@@ -1,5 +1,7 @@
 import math
 import logging
+import numpy as np
+from scipy import signal
 
 """
 params = {
@@ -49,28 +51,22 @@ def up_sample(waypoints, factor):
     :param factor: integer. E.g. 3 means that the resulting list has 3 times as many points.
     :return:
     """
-    p = waypoints
-    n = len(p)
-    return [[i / factor * p[(j+1) % n][0] + (1 - i / factor) * p[j][0],
-             i / factor * p[(j+1) % n][1] + (1 - i / factor) * p[j][1]] for j in range(n) for i in range(factor)]
+    return list( signal.resample(np.array(waypoints), len(waypoints) * factor) )
 
 def get_waypoints(params, scaling_factor):
     """ Way-points """
     if params['is_reversed']: # driving clock wise.
         waypoints = list(reversed(params['waypoints']))
     else: # driving counter clock wise.
-        waypoints = params['waypoints']
-    
+        waypoints = params['waypoints']    
     waypoints = waypoints[params["closest_waypoints"][1]: ]
+    starting = (params["x"], params["y"])
 
-    # starting = (params["x"], params["y"])
+    waypoints = list(starting) + waypoints
 
-    # waypoints = list(starting) + waypoints
-
-    # increased_precision = up_sample(waypoints, scaling_factor)
-    # increased_precision.pop(0)
-
-    return waypoints    
+    increased_precision = up_sample(waypoints, scaling_factor)
+    increased_precision.pop(0)
+    return waypoints
 
 def target_angle(params):
     wp = get_waypoints(params, 2)
@@ -84,7 +80,7 @@ def is_a_turn_coming_up( params, n_points, angle_threshold ):
 
 def is_higher_speed_favorable(params):
     """ no high difference in heading  """
-    return 10 * params["speed"] * (-0.001 if is_a_turn_coming_up( params, n_points=10, angle_threshold=5 ) else 1)
+    return 10 * params["speed"] * (-0.01 if is_a_turn_coming_up( params, n_points=15, angle_threshold=4 ) else 1)
      
 def is_steps_favorable(params):
     return 1 * 100 / params["steps"]
@@ -96,7 +92,7 @@ def get_target_steering_degree(params):
     dx = tx-car_x
     dy = ty-car_y
     heading = params['heading']
-    target_angle = angle((tx, ty), (car_x, car_y))
+    target_angle = angle((car_x, car_y), (tx, ty))
     steering_angle = target_angle - heading
     return steering_angle % 360
 
@@ -108,7 +104,7 @@ def off_center_penalty( params ):
     #TODO check how we can improve this logic
     threshold = params['track_width']*0.1
     distance_from_center = params[ 'distance_from_center' ]
-    path_is_straight = not is_a_turn_coming_up( params, n_points=10, angle_threshold=5 )    
+    path_is_straight = not is_a_turn_coming_up( params, n_points=15, angle_threshold=5 )    
     if path_is_straight:
         # if path is straight then greater distance from center will be penalised when the distance is greater than threshold
         # and if the distance from center is less than threshold, a reward of 10 will be given
