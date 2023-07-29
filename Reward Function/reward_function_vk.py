@@ -75,18 +75,15 @@ def target_angle(params):
     wp = get_waypoints(params, 2)
     return angle(wp[0])    
 
+def is_a_turn_coming_up( params, n_points, angle_threshold ):
+    wp = get_waypoints(params, 2)
+    angles = [ angle( wp[i], wp[i+1] ) for i in range( n_points ) ]
+    diff_angles = [ abs(angles[i] - angles[i+1]) for i in range(len(angles) - 1) ]
+    return not all([ diff < angle_threshold for diff in diff_angles ])
 
 def is_higher_speed_favorable(params):
     """ no high difference in heading  """
-    wp = get_waypoints(params, 2)
-
-    diff_threshold = 5
-    points_threshold = 10
-
-    angles = [angle(p) for p in wp[0:points_threshold]] 
-    diff_angles = [ abs(angles[i] - angles[i+1]) <= diff_threshold for i in range(len(angles) - 1) ]
-    is_straight = all(diff_angles)
-    return 10 * params["speed"] * (-1 if not is_straight else 1)
+    return 10 * params["speed"] * (-0.001 if is_a_turn_coming_up( params, n_points=10, angle_threshold=5 ) else 1)
      
 def is_steps_favorable(params):
     return 1 * 100 / params["steps"]
@@ -109,8 +106,12 @@ def off_center_penalty( params ):
     ''' function to encourage the model to stay close to the track center when there are no curves coming up'''
     #TODO check how we can improve this logic
     threshold = params['track_width']*0.1
-    factor = 1 if is_higher_speed_favorable( params ) > 0 else -1
-    return int( params[ 'distance_from_center' ] < threshold ) * 10 * factor
+    distance_from_center = params[ 'distance_from_center' ]
+    path_is_straight = not is_a_turn_coming_up( params, n_points=10, angle_threshold=5 )    
+    if path_is_straight:
+        # if path is straight then greater distance from center will be penalised when the distance is greater than threshold
+        # and if the distance from center is less than threshold, a reward of 10 will be given
+        return -5*distance_from_center if distance_from_center>threshold else 10
 
 def score_steer_to_point_ahead(params):
     best_stearing_angle = get_target_steering_degree(params)
