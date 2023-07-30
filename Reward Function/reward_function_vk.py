@@ -27,7 +27,6 @@ params = {
 }
 """
 import math
-import logging
 import numpy as np
 from scipy import signal
 
@@ -58,12 +57,12 @@ def get_waypoints(params, scaling_factor):
     else: # driving counter clock wise.
         waypoints = params['waypoints']    
     waypoints = waypoints[params["closest_waypoints"][1]: ]
-    starting = (params["x"], params["y"])
+    # starting = (params["x"], params["y"])
 
-    waypoints = list(starting) + waypoints
+    # waypoints = list(starting) + waypoints
 
-    increased_precision = up_sample(waypoints, scaling_factor)
-    increased_precision.pop(0)
+    # increased_precision = up_sample(waypoints, scaling_factor)
+    # increased_precision.pop(0)
     return waypoints
 
 def target_angle(params):
@@ -72,14 +71,14 @@ def target_angle(params):
 
 def is_a_turn_coming_up( params, n_points, angle_threshold ):
     wp = get_waypoints(params, 2)
-    angles = [ angle( wp[i], wp[i+1] ) for i in range( min( n_points-1, len(wp) ) ) ]
+    angles = [ angle( wp[i], wp[i+1] ) for i in range( min( n_points-1, len(wp)-1 ) ) ]
     diff_angles = [ abs(angles[i] - angles[i+1]) for i in range(len(angles) - 1) ]
     return not all([ diff < angle_threshold for diff in diff_angles ])
 
 def is_higher_speed_favorable(params):
     """ no high difference in heading  """
-    # speed range 2-4 > 0 - 6
-    return 1.5 * params["speed"] * (0 if is_a_turn_coming_up( params, n_points=15, angle_threshold=4 ) else 1)
+    # speed range 2-4 > 3 - 6
+    return 1.5 * params["speed"] * (0.5 if is_a_turn_coming_up( params, n_points=15, angle_threshold=5 ) else 1)
      
 def is_steps_favorable(params):
     # if number of steps range (1-150) > (0.66 - 100)
@@ -129,11 +128,11 @@ def score_steer_to_point_ahead(params):
 def calculate_reward(params):
     if params["is_offtrack"] or params["is_crashed"]:
         return -100.0
-    try:
-        return float(score_steer_to_point_ahead(params))
-    except Exception as ex:
-        logging.error('[EXCEPTION TeamBubbles] %s', ex)
-        return float(0)
+    #try:
+    return float(score_steer_to_point_ahead(params))
+    #except Exception as ex:
+    #    logging.error('[EXCEPTION TeamBubbles] %s', ex)
+    #    return float(0)
 
 def reward_function(params):
     return float(calculate_reward(params))
