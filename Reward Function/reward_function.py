@@ -23,34 +23,26 @@ params = {
 """
 
 import math
-import logger
 
 def dist(point1, point2):
     return ((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2) ** 0.5
-
-
 
 def rect(r, theta):
     """
     theta in degrees
     returns tuple; (float, float); (x,y)
     """
-
     x = r * math.cos(math.radians(theta))
     y = r * math.sin(math.radians(theta))
     return x, y
-
-
 
 def polar(x, y):
     """
     returns r, theta(degrees)
     """
-
     r = (x ** 2 + y ** 2) ** .5
     theta = math.degrees(math.atan2(y,x))
     return r, theta
-
 
 def angle_mod_360(angle):
     """
@@ -61,7 +53,6 @@ def angle_mod_360(angle):
     :param angle: angle in degree
     :return: angle in degree. Between -180 and +180
     """
-
     n = math.floor(angle/360.0)
 
     angle_between_0_and_360 = angle - n*360.0
@@ -71,14 +62,12 @@ def angle_mod_360(angle):
     else:
         return angle_between_0_and_360 - 360
 
-
 def get_waypoints_ordered_in_driving_direction(params):
     # waypoints are always provided in counter clock wise order
     if params['is_reversed']: # driving clock wise.
         return list(reversed(params['waypoints']))
     else: # driving counter clock wise.
         return params['waypoints']
-
 
 def up_sample(waypoints, factor):
     """
@@ -89,10 +78,8 @@ def up_sample(waypoints, factor):
     """
     p = waypoints
     n = len(p)
-
     return [[i / factor * p[(j+1) % n][0] + (1 - i / factor) * p[j][0],
              i / factor * p[(j+1) % n][1] + (1 - i / factor) * p[j][1]] for j in range(n) for i in range(factor)]
-
 
 def get_target_point(params):
 
@@ -105,35 +92,6 @@ def get_target_point(params):
     
     next_closest = closest_waypoint[1]
     return driving_dir_waypoints[next_closest]
-    
-#    index_wp = driving_dir_waypoints.index(next_closest)
-#
-#    input_up_sample = driving_dir_waypoints[index_wp:]
-#    
-#    
-#    waypoints = up_sample(input_up_sample, 1)
-#
-#    car = [params['x'], params['y']]
-
-#    distances = [dist(p, car) for p in waypoints]
-#    min_dist = min(distances)
-#    i_closest = distances.index(min_dist)
-#
-#    n = len(waypoints)
-#
-#    waypoints_starting_with_closest = [waypoints[(i+i_closest) % n] for i in range(n)]
-
-#    r = params['track_width'] * 0.9
-#
-#    is_inside = [dist(p, car) < r for p in waypoints]
-#    i_first_outside = is_inside.index(False)
-
-#    if i_first_outside < 0:  # this can only happen if we choose r as big as the entire track
-#        return waypoints[i_closest]
-
-#    return waypoints_starting_with_closest[i_first_outside]
-
-
 
 def get_target_steering_degree(params):
     tx, ty = get_target_point(params)
@@ -142,64 +100,36 @@ def get_target_steering_degree(params):
     dx = tx-car_x
     dy = ty-car_y
     heading = params['heading']
-
     _, target_angle = polar(dx, dy)
-
     steering_angle = target_angle - heading
-
     return angle_mod_360(steering_angle)
-
 
 def get_progress_score(params, error):
     steps = params['steps']
     progress = params['progress']
 
     # Total num of steps we want the car to finish the lap, it will vary depends on the track length
+    # TODO make this dynamic based on the track length, number of way points, overall shape of the track
     TOTAL_NUM_STEPS = 220
-    ERROR_THRESHOLD = 0.5
+    ERROR_THRESHOLD = 0.25
     MAX_SPEED = 3.7
-    MIN_SPEED = 1.5
     # Initialize the reward with typical value
     reward = 0
 
     # Give Reward for progress only if error is < the Error treshold
-    
-    # Here if ERROR_THRESHOLD/ < error < ERROR_THRESHOLD then only give  (progress / 100) as reward
-    if error < ERROR_THRESHOLD and error > ERROR_THRESHOLD/2:
-        # Give additional reward if the car pass every 100 steps faster than expected
-        if (steps % 50) == 0 and progress > (steps / TOTAL_NUM_STEPS) * 100 :
-            reward += (progress / 100)
+    # TODO we need a better way to implement lines 123-130
+    if progress > (steps / TOTAL_NUM_STEPS) * 100 and error < ERROR_THRESHOLD:
+        reward += ( progress/100 ) * (ERROR_THRESHOLD-error) * int( steps%100==0 )
 
-    # Here if ERROR_THRESHOLD/4 < error < ERROR_THRESHOLD/2 then only give  (progress / 100) + (progress / 200) as reward
-    elif error <= ERROR_THRESHOLD/2 and error >= ERROR_THRESHOLD/4:
-        # Give additional reward if the car pass every 100 steps faster than expected
-        if (steps % 50) == 0 and progress > (steps / TOTAL_NUM_STEPS) * 100 :
-            reward += (progress / 100) + (progress / 200)
+    if progress == 100:
+        reward -= error+abs(params["speed"] - MAX_SPEED)
 
-
-    
-    if progress == 100 and error < 0.15 and ((params["speed"] - MAX_SPEED) < 0.3 ):
-        reward = 2*(1 +(progress / 100)) + 5
-    elif progress == 100 and error < 0.25 and ((params["speed"] - MAX_SPEED) < 0.3 ):
-        reward = 2*(1 +(progress / 100)) + 4
-    elif progress == 100 and error < 0.25 and ((params["speed"] - MAX_SPEED) < 0.6 ):
-        reward = 2*(1 +(progress / 100)) + 3
-    elif progress == 100 and error < 0.25 and ((params["speed"] - MAX_SPEED) < 1.5 ):
-        reward = 2*(1 +(progress / 100)) + 2
-    elif progress == 100 and error < 0.25 and ((params["speed"] - MAX_SPEED) < 2 ):
-        reward = 2*(1 +(progress / 100))
-    
-    elif progress == 100 and error > 0.25 and error < 0.65 and  ((params["speed"] - MAX_SPEED) < 0.6 ):
-        reward = 3 +(progress / 100)
-    elif progress == 100 and error > 0.25 and error < 0.65 and  ((params["speed"] - MAX_SPEED) < 1.5 ):
-        reward = 2 +(progress / 100)
-    elif progress == 100 and error > 0.25 and error < 0.65 and  ((params["speed"] - MAX_SPEED) < 2 ):
-        reward = 1 +(progress / 100)
-    
-
-    if (steps % 100) == 0 and progress == 100 and error < 0.25 and params["speed"] == MAX_SPEED:
-        reward = reward * 2 
+    if (steps % 100) == 0 and progress == 100 and error < 0.0625 and params["speed"] == MAX_SPEED:
+        reward = reward * 2 if reward > 0 else reward+5
         
+    #scaling the reward by the progress to encourage the model to prioritize progress,
+    #we can even use exponential scaling for this.    
+    reward *= (progress/100)
     return float(reward)
 
 
@@ -207,14 +137,12 @@ def score_steer_to_point_ahead(params):
     best_stearing_angle = get_target_steering_degree(params)
     steering_angle = params['steering_angle']
 
-    error = (steering_angle - best_stearing_angle) / 60.0  # 60 degree is already really bad
-
-    score = 1.0 - abs(error)
-
-    return max(score + get_progress_score(params, abs(error)), 0.01)  # optimizer is rumored to struggle with negative numbers and numbers too close to zero
-
+    error = (steering_angle - best_stearing_angle) / 30.0  # keeping 30 degrees as the threshold for error in the angle
+    error = error**2 # squaring the error to get rid of the negative as well as amplifying the error
+    score = 1.0 - error
+    return score + get_progress_score(params, error)
 
 def reward_function(params):
     if params["is_offtrack"] or params["is_crashed"]:
-        return 0.0001
+        return -1 #not sure if the reward can be negative or not, but I think negative reward makes sense
     return float(score_steer_to_point_ahead(params))
