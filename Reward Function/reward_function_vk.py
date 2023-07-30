@@ -41,6 +41,11 @@ def angle(p1, p2):
     dx = p2[0]-p1[0]
     return math.degrees(math.atan2(dy,dx))
 
+def normalize_angle_to_360(angle):
+    if angle < 0:
+        return 360 + angle
+    return angle
+
 def up_sample(waypoints, factor):
     """
     Adds extra waypoints in between provided waypoints
@@ -72,13 +77,14 @@ def target_angle(params):
 def is_a_turn_coming_up( params, n_points, angle_threshold ):
     wp = get_waypoints(params, 2)
     angles = [ angle( wp[i], wp[i+1] ) for i in range( min( n_points-1, len(wp)-1 ) ) ]
+    angles = [ normalize_angle_to_360(angle) for angle in angles ]
     diff_angles = [ abs(angles[i] - angles[i+1]) for i in range(len(angles) - 1) ]
     return not all([ diff < angle_threshold for diff in diff_angles ])
 
 def is_higher_speed_favorable(params):
     """ no high difference in heading  """
-    # speed range 2-4 > 3 - 6
-    return 1.5 * params["speed"] * (0.5 if is_a_turn_coming_up( params, n_points=15, angle_threshold=5 ) else 1)
+    # speed range 2-4 > 0 - 6
+    return 1.5 * params["speed"] * (0 if is_a_turn_coming_up( params, n_points=15, angle_threshold=4 ) else 1)
      
 def is_steps_favorable(params):
     # if number of steps range (1-150) > (0.66 - 100)
@@ -127,12 +133,8 @@ def score_steer_to_point_ahead(params):
 
 def calculate_reward(params):
     if params["is_offtrack"] or params["is_crashed"]:
-        return -100.0
-    #try:
+        return -200.0
     return float(score_steer_to_point_ahead(params))
-    #except Exception as ex:
-    #    logging.error('[EXCEPTION TeamBubbles] %s', ex)
-    #    return float(0)
 
 def reward_function(params):
     return float(calculate_reward(params))
