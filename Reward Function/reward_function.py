@@ -11,11 +11,6 @@ params = {
     "is_offtrack": Boolean,                # Boolean flag to indicate whether the agent has gone off track.
     "is_reversed": Boolean,                # flag to indicate if the agent is driving clockwise (True) or counter clockwise (False).
     "heading": float,                      # agent's yaw in degrees
-    "objects_distance": [float, ],         # list of the objects' distances in meters between 0 and track_length in relation to the starting line.
-    "objects_heading": [float, ],          # list of the objects' headings in degrees between -180 and 180.
-    "objects_left_of_center": [Boolean, ], # list of Boolean flags indicating whether elements' objects are left of the center (True) or not (False).
-    "objects_location": [(float, float),], # list of object locations [(x,y), ...].
-    "objects_speed": [float, ],            # list of the objects' speeds in meters per second.
     "progress": float,                     # percentage of track completed
     "speed": float,                        # agent's speed in meters per second (m/s)
     "steering_angle": float,               # agent's steering angle in degrees
@@ -90,6 +85,9 @@ def get_target_point(params):
 
     #We took next waypoints se aage ka
     driving_dir_waypoints = get_waypoints_ordered_in_driving_direction(params)
+
+    logger.info("Length of waypoints: ", len(driving_dir_waypoints))
+
     closest_waypoint = params["closest_waypoints"]  # 0th: prev wp, 1st: next wp
     
     next_closest = closest_waypoint[1]
