@@ -1,8 +1,3 @@
-import math
-import logging
-import numpy as np
-from scipy import signal
-
 """
 params = {
     "all_wheels_on_track": Boolean,        # flag to indicate if the agent is on the track
@@ -32,6 +27,9 @@ params = {
 }
 """
 import math
+import logging
+import numpy as np
+from scipy import signal
 
 def distance(p1, p2):
     """ Euclidean distance between two points """ 
@@ -80,8 +78,8 @@ def is_a_turn_coming_up( params, n_points, angle_threshold ):
 
 def is_higher_speed_favorable(params):
     """ no high difference in heading  """
-    # speed range 2-4 > -40 - 40
-    return 10 * params["speed"] * (-1 if is_a_turn_coming_up( params, n_points=15, angle_threshold=4 ) else 1)
+    # speed range 2-4 > 0 - 6
+    return 1.5 * params["speed"] * (0 if is_a_turn_coming_up( params, n_points=15, angle_threshold=4 ) else 1)
      
 def is_steps_favorable(params):
     # if number of steps range (1-150) > (0.66 - 100)
@@ -91,18 +89,17 @@ def is_steps_favorable(params):
     return float( 100 / params["steps"] )
 
 def get_target_heading_degree_reward(params):
-    # reward range 0.5-2
+    # reward range 0-5
     tx, ty = get_waypoints(params,2)[0]
     car_x, car_y = params['x'], params['y']
     heading = params['heading']
     target_angle = angle((car_x, car_y), (tx, ty))
     diff = abs( target_angle - heading )
-    if diff > 180:
-        diff = 360 - diff
+    diff = 360-diff if diff>180 else diff
     threshold = 10
     if diff > threshold:
-        return 0.5
-    return 2
+        return 0
+    return 5
 
 def is_progress_favorable(params):
     # progress range is 1-100 > reward range is 0.1 - 10
@@ -117,7 +114,7 @@ def off_center_penalty( params ):
     if path_is_straight:
         # if path is straight then greater distance from center will be penalised when the distance is greater than threshold
         # and if the distance from center is less than threshold, a reward of 10 will be given
-        return -7*distance_from_center if distance_from_center>threshold else 10
+        return -20*distance_from_center if distance_from_center>threshold else 10
     return 0
 
 def score_steer_to_point_ahead(params):
@@ -126,17 +123,17 @@ def score_steer_to_point_ahead(params):
     progress_reward     = is_progress_favorable(params)
     speed_reward        = is_higher_speed_favorable(params)
     track_center_reward = off_center_penalty(params)
-    reward              = (steps_reward*progress_reward)**2 + (heading_reward)**2 + (speed_reward + track_center_reward)
+    reward              = (speed_reward)**2 + (heading_reward)**2 + ( steps_reward*progress_reward + track_center_reward )
     return reward
 
 def calculate_reward(params):
     if params["is_offtrack"] or params["is_crashed"]:
         return -100.0
-    return float(score_steer_to_point_ahead(params))
+    try:
+        return float(score_steer_to_point_ahead(params))
+    except Exception as ex:
+        logging.error('[EXCEPTION TeamBubbles] %s', ex)
+        return float(0)
 
 def reward_function(params):
-    try:
-        return float(calculate_reward(params))
-    except Exception as ex:
-        logging.error('[EXCEPTION444] %s', ex)
-        return float(0)
+    return float(calculate_reward(params))
