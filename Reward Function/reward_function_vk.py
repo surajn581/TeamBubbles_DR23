@@ -80,23 +80,32 @@ def is_a_turn_coming_up( params, n_points, angle_threshold ):
 
 def is_higher_speed_favorable(params):
     """ no high difference in heading  """
-    return 10 * params["speed"] * (-0.01 if is_a_turn_coming_up( params, n_points=15, angle_threshold=4 ) else 1)
+    # speed range 2-4 > -40 - 40
+    return 10 * params["speed"] * (-1 if is_a_turn_coming_up( params, n_points=15, angle_threshold=4 ) else 1)
      
 def is_steps_favorable(params):
-    return 1 * 100 / params["steps"]
+    # if number of steps range (1-150) > (0.66 - 100)
+    # if number of steps range (1-900) > (0.11 - 100)
+    if params['progress'] != 100:
+        return 1
+    return float( 100 / params["steps"] )
 
-def get_target_steering_degree(params):
+def get_target_heading_degree_reward(params):
+    # reward range 0.5-2
     tx, ty = get_waypoints(params,2)[0]
-    car_x = params['x']
-    car_y = params['y']
-    dx = tx-car_x
-    dy = ty-car_y
+    car_x, car_y = params['x'], params['y']
     heading = params['heading']
     target_angle = angle((car_x, car_y), (tx, ty))
-    steering_angle = target_angle - heading
-    return steering_angle % 360
+    diff = abs( target_angle - heading )
+    if diff > 180:
+        diff = 360 - diff
+    threshold = 10
+    if diff > threshold:
+        return 0.5
+    return 2
 
 def is_progress_favorable(params):
+    # progress range is 1-100 > reward range is 0.1 - 10
     return params["progress"] / 10
 
 def off_center_penalty( params ):
@@ -108,15 +117,17 @@ def off_center_penalty( params ):
     if path_is_straight:
         # if path is straight then greater distance from center will be penalised when the distance is greater than threshold
         # and if the distance from center is less than threshold, a reward of 10 will be given
-        return -5*distance_from_center if distance_from_center>threshold else 10
+        return -7*distance_from_center if distance_from_center>threshold else 10
     return 0
 
 def score_steer_to_point_ahead(params):
-    best_stearing_angle = get_target_steering_degree(params)
-    steering_angle = params['steering_angle']
-    error = (steering_angle - best_stearing_angle) / 30.0   # keeping 30 degrees as the threshold for error in the angle
-    score = 1.0 - error**2
-    return is_steps_favorable(params) * is_progress_favorable(params) * is_higher_speed_favorable(params) + score + off_center_penalty(params)
+    heading_reward      = get_target_heading_degree_reward(params)
+    steps_reward        = is_steps_favorable(params)
+    progress_reward     = is_progress_favorable(params)
+    speed_reward        = is_higher_speed_favorable(params)
+    track_center_reward = off_center_penalty(params)
+    reward              = (steps_reward*progress_reward)**2 + (heading_reward)**2 + (speed_reward + track_center_reward)
+    return reward
 
 def calculate_reward(params):
     if params["is_offtrack"] or params["is_crashed"]:
