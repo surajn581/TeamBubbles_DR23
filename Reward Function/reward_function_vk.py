@@ -84,13 +84,13 @@ def is_a_turn_coming_up( params, n_points, angle_threshold ):
 def is_higher_speed_favorable(params):
     """ no high difference in heading  """
     # speed range 2-4 > 0 - 6
-    return 1.5 * params["speed"] * (0 if is_a_turn_coming_up( params, n_points=15, angle_threshold=4 ) else 1)
+    return 1.5 * params["speed"] * (0 if is_a_turn_coming_up( params, n_points=25, angle_threshold=4 ) else 1)
      
 def is_steps_favorable(params):
     # if number of steps range (1-150) > (0.66 - 100)
     # if number of steps range (1-900) > (0.11 - 100)
     if params['progress'] != 100:
-        return 1
+        return float( 50 / params["steps"] )
     return float( 100 / params["steps"] )
 
 def get_target_heading_degree_reward(params):
@@ -115,12 +115,11 @@ def off_center_penalty( params ):
     #TODO check how we can improve this logic
     threshold = params['track_width']*0.1
     distance_from_center = params[ 'distance_from_center' ]
-    path_is_straight = not is_a_turn_coming_up( params, n_points=15, angle_threshold=5 )    
-    if path_is_straight:
-        # if path is straight then greater distance from center will be penalised when the distance is greater than threshold
-        # and if the distance from center is less than threshold, a reward of 10 will be given
-        return -20*distance_from_center if distance_from_center>threshold else 10
-    return 0
+    path_is_straight = not is_a_turn_coming_up( params, n_points=25, angle_threshold=5 )    
+    threshold = params['track_width'] * ( 0.1 if path_is_straight else 0.3 )
+    # if path is straight then greater distance from center will be penalised when the distance is greater than threshold
+    # and if the distance from center is less than threshold, a reward of 10 will be given
+    return -20*distance_from_center if distance_from_center>threshold else 10
 
 def score_steer_to_point_ahead(params):
     heading_reward      = get_target_heading_degree_reward(params)
@@ -128,7 +127,7 @@ def score_steer_to_point_ahead(params):
     progress_reward     = is_progress_favorable(params)
     speed_reward        = is_higher_speed_favorable(params)
     track_center_reward = off_center_penalty(params)
-    reward              = (speed_reward)**2 + (heading_reward)**2 + ( steps_reward*progress_reward + track_center_reward )
+    reward              = (speed_reward) * (heading_reward) + steps_reward*progress_reward + (2*track_center_reward)
     return reward
 
 def calculate_reward(params):
