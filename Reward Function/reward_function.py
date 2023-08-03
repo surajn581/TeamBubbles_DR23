@@ -11,6 +11,11 @@ params = {
     "is_offtrack": Boolean,                # Boolean flag to indicate whether the agent has gone off track.
     "is_reversed": Boolean,                # flag to indicate if the agent is driving clockwise (True) or counter clockwise (False).
     "heading": float,                      # agent's yaw in degrees
+    "objects_distance": [float, ],         # list of the objects' distances in meters between 0 and track_length in relation to the starting line.
+    "objects_heading": [float, ],          # list of the objects' headings in degrees between -180 and 180.
+    "objects_left_of_center": [Boolean, ], # list of Boolean flags indicating whether elements' objects are left of the center (True) or not (False).
+    "objects_location": [(float, float),], # list of object locations [(x,y), ...].
+    "objects_speed": [float, ],            # list of the objects' speeds in meters per second.
     "progress": float,                     # percentage of track completed
     "speed": float,                        # agent's speed in meters per second (m/s)
     "steering_angle": float,               # agent's steering angle in degrees
@@ -21,53 +26,25 @@ params = {
 
 }
 """
-
 import math
+import numpy as np
+from scipy import signal
 
-def dist(point1, point2):
-    return ((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2) ** 0.5
+def distance(p1, p2):
+    """ Euclidean distance between two points """ 
+    return ((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2) ** 0.5
 
-def rect(r, theta):
+def angle(p1, p2):
     """
-    theta in degrees
-    returns tuple; (float, float); (x,y)
     """
-    x = r * math.cos(math.radians(theta))
-    y = r * math.sin(math.radians(theta))
-    return x, y
+    dy = p2[1]-p1[1]
+    dx = p2[0]-p1[0]
+    return math.degrees(math.atan2(dy,dx))
 
-def polar(x, y):
-    """
-    returns r, theta(degrees)
-    """
-    r = (x ** 2 + y ** 2) ** .5
-    theta = math.degrees(math.atan2(y,x))
-    return r, theta
-
-def angle_mod_360(angle):
-    """
-    Maps an angle to the interval -180, +180.
-    Examples:
-    angle_mod_360(362) == 2
-    angle_mod_360(270) == -90
-    :param angle: angle in degree
-    :return: angle in degree. Between -180 and +180
-    """
-    n = math.floor(angle/360.0)
-
-    angle_between_0_and_360 = angle - n*360.0
-
-    if angle_between_0_and_360 <= 180.0:
-        return angle_between_0_and_360
-    else:
-        return angle_between_0_and_360 - 360
-
-def get_waypoints_ordered_in_driving_direction(params):
-    # waypoints are always provided in counter clock wise order
-    if params['is_reversed']: # driving clock wise.
-        return list(reversed(params['waypoints']))
-    else: # driving counter clock wise.
-        return params['waypoints']
+def normalize_angle_to_360(angle):
+    if angle < 0:
+        return 360 + angle
+    return angle
 
 def up_sample(waypoints, factor):
     """
@@ -76,73 +53,108 @@ def up_sample(waypoints, factor):
     :param factor: integer. E.g. 3 means that the resulting list has 3 times as many points.
     :return:
     """
-    p = waypoints
-    n = len(p)
-    return [[i / factor * p[(j+1) % n][0] + (1 - i / factor) * p[j][0],
-             i / factor * p[(j+1) % n][1] + (1 - i / factor) * p[j][1]] for j in range(n) for i in range(factor)]
+    return list( signal.resample(np.array(waypoints), len(waypoints) * factor) )
 
-def get_target_point(params):
+def get_waypoints(params, scaling_factor):
+    """ Way-points """
+    if params['is_reversed']: # driving clock wise.
+        waypoints = list(reversed(params['waypoints']))
+    else: # driving counter clock wise.
+        waypoints = params['waypoints']    
+    waypoints = waypoints[params["closest_waypoints"][1]: ]
+    # starting = (params["x"], params["y"])
 
-    #We took next waypoints se aage ka
-    driving_dir_waypoints = get_waypoints_ordered_in_driving_direction(params)
+    # waypoints = list(starting) + waypoints
 
-    logger.info("Length of waypoints: ", len(driving_dir_waypoints))
+    # increased_precision = up_sample(waypoints, scaling_factor)
+    # increased_precision.pop(0)
+    return waypoints
 
-    closest_waypoint = params["closest_waypoints"]  # 0th: prev wp, 1st: next wp
-    
-    next_closest = closest_waypoint[1]
-    return driving_dir_waypoints[next_closest]
+def calculate_angle(p1, p2, p3):
+    # Calculate the angle between three points p1, p2, p3
+    angle = math.degrees(
+        math.atan2(p3[1] - p2[1], p3[0] - p2[0]) - math.atan2(p1[1] - p2[1], p1[0] - p2[0])
+    )
+    return angle % 360
 
-def get_target_steering_degree(params):
-    tx, ty = get_target_point(params)
-    car_x = params['x']
-    car_y = params['y']
-    dx = tx-car_x
-    dy = ty-car_y
+def get_turn_points(coordinates):
+    turn_points = []
+    window_size = 8
+    threshold_angle = 4.9  # Set a threshold angle to determine a significant turn
+
+    for i in range(len(coordinates) - window_size + 1):
+        window = coordinates[i : i + window_size]
+        angles = [
+            calculate_angle(window[j], window[j + 1], window[j + 2]) for j in range(window_size - 2)
+        ]
+        max_angle_change = abs( max(angles) - min(angles) )
+        if max_angle_change >= threshold_angle:
+            turn_points.append(coordinates[i])
+    return turn_points
+
+def target_angle(params):
+    wp = get_waypoints(params, 2)
+    return angle(wp[0], wp[1])    
+
+def is_a_turn_coming_up( params ):
+    next_way_point = params["closest_waypoints"][1]
+    if next_way_point in get_turn_points( params['waypoints'] ):
+        return True
+    return False
+
+def is_higher_speed_favorable(params):
+    """ no high difference in heading  """
+    # speed range 2-4 > 0 - 6
+    return 20 * ( params["speed"] ** (-1 if is_a_turn_coming_up( params ) else 1) )
+     
+def is_steps_favorable(params):
+    # if number of steps range (1-150) > (0.66 - 100)
+    # if number of steps range (1-900) > (0.11 - 100)
+    if params['progress'] != 100:
+        return float( 50 / params["steps"] )
+    return float( 100 / params["steps"] )
+
+def get_target_heading_degree_reward(params):
+    # reward range 0-5
+    tx, ty = get_waypoints(params,2)[0]
+    car_x, car_y = params['x'], params['y']
     heading = params['heading']
-    _, target_angle = polar(dx, dy)
-    steering_angle = target_angle - heading
-    return angle_mod_360(steering_angle)
+    target_angle = angle((car_x, car_y), (tx, ty))
+    diff = abs( target_angle - heading )
+    diff = 360-diff if diff>180 else diff
+    threshold = 5
+    if diff > threshold:
+        return -5
+    return 5
 
-def get_progress_score(params, error):
-    steps = params['steps']
-    progress = params['progress']
+def is_progress_favorable(params):
+    # progress range is 1-100 > reward range is 0.1 - 10
+    return params["progress"] / 10
 
-    # Total num of steps we want the car to finish the lap, it will vary depends on the track length
-    # TODO make this dynamic based on the track length, number of way points, overall shape of the track
-    TOTAL_NUM_STEPS = 220
-    ERROR_THRESHOLD = 0.25
-    MAX_SPEED = 3.7
-    # Initialize the reward with typical value
-    reward = 0
-
-    # Give Reward for progress only if error is < the Error treshold
-    # TODO we need a better way to implement lines 123-130
-    if progress > (steps / TOTAL_NUM_STEPS) * 100 and error < ERROR_THRESHOLD:
-        reward += ( progress/100 ) * (ERROR_THRESHOLD-error) * int( steps%100==0 )
-
-    if progress == 100:
-        reward -= error+abs(params["speed"] - MAX_SPEED)
-
-    if (steps % 100) == 0 and progress == 100 and error < 0.0625 and params["speed"] == MAX_SPEED:
-        reward = reward * 2 if reward > 0 else reward+5
-        
-    #scaling the reward by the progress to encourage the model to prioritize progress,
-    #we can even use exponential scaling for this.    
-    reward *= (progress/100)
-    return float(reward)
-
+def off_center_penalty( params ):
+    ''' function to encourage the model to stay close to the track center when there are no curves coming up'''
+    #TODO check how we can improve this logic
+    threshold = params['track_width']*0.1
+    distance_from_center = params[ 'distance_from_center' ]
+    path_is_straight = not is_a_turn_coming_up( params )
+    threshold = params['track_width'] * ( 0.1 if path_is_straight else 0.25 )
+    # if path is straight then greater distance from center will be penalised when the distance is greater than threshold
+    # and if the distance from center is less than threshold, a reward of 10 will be given
+    return -20*distance_from_center if distance_from_center>threshold else 10
 
 def score_steer_to_point_ahead(params):
-    best_stearing_angle = get_target_steering_degree(params)
-    steering_angle = params['steering_angle']
+    heading_reward      = get_target_heading_degree_reward(params)
+    steps_reward        = is_steps_favorable(params)
+    progress_reward     = is_progress_favorable(params)
+    speed_reward        = is_higher_speed_favorable(params)
+    track_center_reward = off_center_penalty(params)
+    reward              = (speed_reward) * (heading_reward) + steps_reward*progress_reward + (3*track_center_reward)
+    return reward
 
-    error = (steering_angle - best_stearing_angle) / 30.0  # keeping 30 degrees as the threshold for error in the angle
-    error = error**2 # squaring the error to get rid of the negative as well as amplifying the error
-    score = 1.0 - error
-    return score + get_progress_score(params, error)
+def calculate_reward(params):
+    if params["is_offtrack"] or params["is_crashed"]:
+        return -500.0
+    return float(score_steer_to_point_ahead(params))
 
 def reward_function(params):
-    if params["is_offtrack"] or params["is_crashed"]:
-        return -1 #not sure if the reward can be negative or not, but I think negative reward makes sense
-    return float(score_steer_to_point_ahead(params))
+    return float(calculate_reward(params))
