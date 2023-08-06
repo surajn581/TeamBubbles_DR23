@@ -72,9 +72,4 @@ def reward_function(params):
     if direction_diff > DIRECTION_THRESHOLD:
         reward *= 0.5
 
-
-    # Penalize incorrect heading (if applicable)
-    heading_error = abs(heading - waypoints[closest_waypoints[1]][2])
-    reward -= heading_penalty * heading_error
-
     return float(reward)
