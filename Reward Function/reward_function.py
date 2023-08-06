@@ -80,7 +80,7 @@ def calculate_angle(p1, p2, p3):
 def get_turn_points(coordinates):
     turn_points = []
     window_size = 8
-    threshold_angle = 4.9  # Set a threshold angle to determine a significant turn
+    threshold_angle = 4.5  # Set a threshold angle to determine a significant turn
 
     for i in range(len(coordinates) - window_size + 1):
         window = coordinates[i : i + window_size]
