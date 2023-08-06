@@ -101,10 +101,18 @@ def get_target_heading_degree_reward(params):
     target_angle = angle((car_x, car_y), (tx, ty))
     diff = abs( target_angle - heading )
     diff = 360-diff if diff>180 else diff
-    threshold = 10
+    threshold = 5
     if diff > threshold:
-        return 0
+        return -5
     return 5
+
+def is_steering_too_much(params):
+    abs_steering = abs(params['steering_angle'])
+    reward = 1.0
+    ABS_STEERING_THRESHOLD = 20.0
+    if abs_steering > ABS_STEERING_THRESHOLD:
+        reward *= 0.5
+    return float(reward)
 
 def is_progress_favorable(params):
     # progress range is 1-100 > reward range is 0.1 - 10
@@ -127,12 +135,13 @@ def score_steer_to_point_ahead(params):
     progress_reward     = is_progress_favorable(params)
     speed_reward        = is_higher_speed_favorable(params)
     track_center_reward = off_center_penalty(params)
-    reward              = (speed_reward) * (heading_reward) + steps_reward*progress_reward + (2*track_center_reward)
+    steering_reward     = is_steering_too_much(params)
+    reward              = (speed_reward) * (heading_reward) * (steering_reward) + steps_reward*progress_reward + (3*track_center_reward)
     return reward
 
 def calculate_reward(params):
     if params["is_offtrack"] or params["is_crashed"]:
-        return -200.0
+        return -500.0
     return float(score_steer_to_point_ahead(params))
 
 def reward_function(params):
